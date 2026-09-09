@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import 'detail_screen.dart';
+import 'timeline_screen.dart';
 
 class FeedScreen extends StatefulWidget { const FeedScreen({super.key}); @override State<FeedScreen> createState() => _FeedScreenState(); }
 
@@ -24,7 +26,9 @@ class _FeedScreenState extends State<FeedScreen> {
         itemBuilder: (c,i) {
           if (i==0) return Padding(padding: const EdgeInsets.all(12), child: Text('BAHAWATCH Post Feed · ${posts.length} recent', style: Theme.of(context).textTheme.titleSmall));
           final p = posts[i-1];
-          return Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          return InkWell(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailScreen(post: Map<String,dynamic>.from(p)))),
+            child: Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (p['photoUrl']!=null) Image.network('${const String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:3000')}${p['photoUrl']}', height: 180, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_,__,___)=> const SizedBox(height:180, child: Center(child: Icon(Icons.image)))),
             Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Wrap(spacing:6, children: [
@@ -38,8 +42,10 @@ class _FeedScreenState extends State<FeedScreen> {
               if (p['caption']!=null && (p['caption'] as String).isNotEmpty) Text(p['caption'], style: const TextStyle(fontSize:13)),
               Text('📍 ${p['lat']}, ${p['lng']} · ${p['geohash']??''}', style: const TextStyle(fontSize:11, color: Colors.grey)),
               if (p['aiReason']!=null) Text('AI: ${p['aiReason']}', style: const TextStyle(fontSize:11, color: Colors.blueGrey)),
+              const SizedBox(height:4),
+              TextButton(onPressed: ()=> Navigator.push(context, MaterialPageRoute(builder: (_)=> TimelineScreen(roadName: p['roadName'] ?? ''))), child: const Text('View timeline →', style: TextStyle(fontSize:12))),
             ])),
-          ]));
+          ])));
         },
       ),
     );

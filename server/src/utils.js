@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { readFileSync } from 'fs';
 
 export function geohash(lat, lng, precision = 7) {
   const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
@@ -22,8 +23,14 @@ export function photoHash(buffer) {
   return createHash('sha256').update(buffer).digest('hex').slice(0, 16);
 }
 
+export function photoHashFromFile(filePath) {
+  const buf = readFileSync(filePath);
+  return createHash('sha256').update(buf).digest('hex').slice(0, 16);
+}
+
 export function haversine(lat1, lng1, lat2, lng2) {
-  if (lat1 == null || lat2 == null) return null;
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
+  if ([lat1,lng1,lat2,lng2].some(v => typeof v !== 'number' || Number.isNaN(v))) return null;
   const R = 6371000, toRad = x => x * Math.PI / 180;
   const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
   const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;

@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../services/api.dart';
 
 class CaptureScreen extends StatefulWidget { const CaptureScreen({super.key}); @override State<CaptureScreen> createState()=> _CaptureScreenState(); }
@@ -26,9 +28,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(()=> submitting=true);
     try {
       final r = await Api.createPost(photoPath: photo!.path, lat: pos!.latitude, lng: pos!.longitude, roadName: roadCtrl.text, roadCondition: roadCondition, severity: severity, caption: captionCtrl.text);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Posted! Status: ${r['status']} · AI ${r['ai']?['confidence']??''}')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Posted! Status: ${r['status']} · AI ${((r['ai']?['confidence']??0)*100).round()}%')));
       setState(()=> photo=null);
-    } catch(e){ if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'))); }
+    } catch(e){
+      // queue offline in Hive with original observedAt
+      try {
+        final box = Hive.box('queue');
+        await box.add({'photoPath': photo!.path, 'lat': pos!.latitude, 'lng': pos!.longitude, 'roadName': roadCtrl.text, 'roadCondition': roadCondition, 'severity': severity, 'caption': captionCtrl.text, 'timestamp': DateTime.now().toIso8601String()});
+      } catch (_) {}
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Offline — queued for auto-upload: $e')));
+    }
     setState(()=> submitting=false);
   }
 
@@ -38,7 +47,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       const SizedBox(height:8),
       if (aiSuggest!=null) Card(color: Colors.blue.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Text(aiSuggest!, style: const TextStyle(fontSize:12)))),
       const SizedBox(height:8),
-      InkWell(onTap: capture, child: Container(height:180, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)), child: photo==null? const Center(child: Column(mainAxisSize: MainAxisSize.min, children:[Icon(Icons.camera_alt, size:36), SizedBox(height:6), Text('Tap to capture flood photo (geotagged)')])) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(photo!.path, fit: BoxFit.cover, errorBuilder: (_,__,___)=> const Center(child: Icon(Icons.image)))))),
+      InkWell(onTap: capture, child: Container(height:180, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)), child: photo==null? const Center(child: Column(mainAxisSize: MainAxisSize.min, children:[Icon(Icons.camera_alt, size:36), SizedBox(height:6), Text('Tap to capture flood photo (geotagged)')])) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(photo!.path), fit: BoxFit.cover, width: double.infinity, height: 180, errorBuilder: (_,__,___)=> const Center(child: Icon(Icons.image)))))),
       if (pos!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text('📍 ${pos!.latitude.toStringAsFixed(5)}, ${pos!.longitude.toStringAsFixed(5)} · Captured ${DateTime.now().toString().substring(0,19)}', style: const TextStyle(fontSize:11, color: Colors.grey))),
       const SizedBox(height:12),
       TextField(controller: roadCtrl, decoration: const InputDecoration(labelText: 'Road / Barangay', border: OutlineInputBorder())),

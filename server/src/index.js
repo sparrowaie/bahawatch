@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import cron from 'node-cron';
 import { existsSync, mkdirSync } from 'fs';
 import db from './db.js';
-import { geohash, photoHash, haversine } from './utils.js';
+import { geohash, photoHashFromFile, haversine } from './utils.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,9 +87,15 @@ app.post('/api/posts', upload.single('photo'), async (req, res) => {
   if (!lat || !lng) return res.status(400).json({ error: 'Geolocation required' });
   const ts = req.body.timestamp || new Date().toISOString();
   const g = geohash(Number(lat), Number(lng));
-  const pHash = photoHash(req.file.path + Date.now());
-  const dup = db.prepare('SELECT id FROM posts WHERE photoHash=?').get(pHash);
-  const dist = haversine(Number(lat), Number(lng), Number(exifLat), Number(exifLng));
+  let pHash = null;
+  try { pHash = photoHashFromFile(req.file.path); } catch { pHash = `${Date.now()}-${req.file.filename}`; }
+  const dup = pHash ? db.prepare('SELECT id FROM posts WHERE photoHash=?').get(pHash) : null;
+  let dist = null;
+  const exLat = exifLat != null && exifLat !== '' ? Number(exifLat) : null;
+  const exLng = exifLng != null && exifLng !== '' ? Number(exifLng) : null;
+  if (exLat != null && exLng != null && !Number.isNaN(exLat) && !Number.isNaN(exLng)) {
+    dist = haversine(Number(lat), Number(lng), exLat, exLng);
+  }
   const ai = await callAI(`/uploads/${req.file.filename}`, Number(lat), Number(lng));
   let status = 'Submitted';
   if (dup) status = 'AI-Flagged';
@@ -157,18 +163,24 @@ app.post('/api/auth/seed-admin', (req, res) => {
 app.post('/api/seed', (req, res) => {
   const { demo } = req.query;
   if (!demo) return res.status(400).json({ error: 'Use ?demo=1' });
+  const existing = db.prepare('SELECT COUNT(*) as c FROM posts WHERE photoHash LIKE ?').get('demo-hash-%');
+  if (existing.c > 0) {
+    db.prepare("DELETE FROM posts WHERE photoHash LIKE 'demo-hash-%'").run();
+  }
+  // ordered oldest → newest so timeline demo shows High → Moderate → Cleared for Burgos as most recent
   const samples = [
+    { roadName: 'Jalandoni St.', barangay: 'La Paz', lat: 10.702, lng: 122.56, roadCondition: 'Not Passable', severity: 'High' },
+    { roadName: 'Huervana St.', barangay: 'La Paz', lat: 10.71, lng: 122.55, roadCondition: 'Difficult to Pass', severity: 'Moderate' },
     { roadName: 'Burgos St. - ISAT-U Gate', barangay: 'La Paz', lat: 10.706, lng: 122.554, roadCondition: 'Not Passable', severity: 'High' },
     { roadName: 'Burgos St. - ISAT-U Gate', barangay: 'La Paz', lat: 10.7061, lng: 122.5541, roadCondition: 'Difficult to Pass', severity: 'Moderate' },
     { roadName: 'Burgos St. - ISAT-U Gate', barangay: 'La Paz', lat: 10.7062, lng: 122.5542, roadCondition: 'Cleared', severity: 'Low' },
-    { roadName: 'Jalandoni St.', barangay: 'La Paz', lat: 10.702, lng: 122.56, roadCondition: 'Not Passable', severity: 'High' },
-    { roadName: 'Huervana St.', barangay: 'La Paz', lat: 10.71, lng: 122.55, roadCondition: 'Difficult to Pass', severity: 'Moderate' },
   ];
   const now = Date.now();
   samples.forEach((s,i) => {
     const id = uuid(), ts = new Date(now - (samples.length - i)* 15*60000).toISOString();
+    const status = s.roadCondition === 'Cleared' ? 'Cleared' : 'Verified';
     db.prepare(`INSERT INTO posts (id,caption,lat,lng,geohash,roadName,barangay,roadCondition,severity,timestamp,status,photoUrl,photoHash,aiIsFlood,aiSeverity,aiCondition,aiConfidence,aiReason,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, `Demo post ${i+1} — ${s.roadCondition}`, s.lat, s.lng, geohash(s.lat,s.lng), s.roadName, s.barangay, s.roadCondition, s.severity, ts, i===samples.length-1?'Cleared':'Verified', `/uploads/demo-${i}.jpg`, `demo-hash-${i}`, 1, s.severity, s.roadCondition, 0.88, 'Seeded demo post', new Date().toISOString(), new Date().toISOString());
+      .run(id, `Demo post ${i+1} — ${s.roadName} · ${s.roadCondition}`, s.lat, s.lng, geohash(s.lat,s.lng), s.roadName, s.barangay, s.roadCondition, s.severity, ts, status, `/uploads/demo-${i}.jpg`, `demo-hash-${i}`, 1, s.severity, s.roadCondition, 0.88, 'Seeded demo post', new Date().toISOString(), new Date().toISOString());
   });
   res.json({ seeded: samples.length });
 });

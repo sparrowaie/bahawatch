@@ -51,8 +51,34 @@ export default function App() {
   }
 
   async function action(id, act) {
-    await fetch(`${API}/api/posts/${id}/${act}`, { method: 'PATCH', headers: authHeader })
-    fetchPosts()
+    if (act === 'delete' && !confirm('Delete this post?')) return
+    const method = act === 'delete' ? 'DELETE' : 'PATCH'
+    await fetch(`${API}/api/posts/${id}/${act === 'delete' ? '' : act}`, { method, headers: authHeader })
+    fetchPosts(); fetchHealth()
+  }
+
+  // keyboard shortcuts v/c on focused list
+  useEffect(() => {
+    function onKey(e) {
+      if (!posts.length) return
+      if (e.key === 'v' && document.activeElement?.tagName !== 'INPUT') {
+        const flagged = posts.find(p => p.status === 'AI-Flagged' || p.status === 'Submitted')
+        if (flagged) action(flagged.id, 'verify')
+      }
+      if (e.key === 'c' && document.activeElement?.tagName !== 'INPUT') {
+        const top = posts[0]
+        if (top) action(top.id, 'clear')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [posts])
+
+  async function openTimeline(roadName) {
+    if (!roadName) return alert('No roadName for timeline')
+    const r = await fetch(`${API}/api/posts/road/${encodeURIComponent(roadName)}/timeline`)
+    const data = await r.json()
+    alert(`${roadName} — ${data.length} posts:\n` + data.map(d => `· ${new Date(d.timestamp).toLocaleString()} — ${d.roadCondition} ${d.severity} [${d.status}]`).join('\n'))
   }
 
   if (!token) return (
@@ -103,10 +129,12 @@ export default function App() {
                 <p className="font-medium text-sm mt-1 truncate">{p.roadName || `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`} {p.barangay?`· ${p.barangay}`:''}</p>
                 <p className="text-sm text-slate-600 line-clamp-1">{p.caption || p.description || '—'}</p>
                 <p className="text-xs text-slate-400">📍 {p.lat.toFixed(5)}, {p.lng.toFixed(5)} · geohash {p.geohash} {p.exifLat?`· EXIF ${p.exifLat.toFixed(4)},${p.exifLng.toFixed(4)}`:''} {p.aiReason?`· AI: ${p.aiReason}`:''}</p>
-                <div className="flex gap-1.5 mt-2">
+                <div className="flex gap-1.5 mt-2 flex-wrap">
                   <button onClick={()=>action(p.id,'verify')} className="text-xs bg-green-600 text-white px-2.5 py-1 rounded">Verify (v)</button>
-                  <button onClick={()=>action(p.id,'clear')} className="text-xs border px-2.5 py-1 rounded">Clear</button>
+                  <button onClick={()=>action(p.id,'clear')} className="text-xs border px-2.5 py-1 rounded">Clear (c)</button>
                   <button onClick={()=>action(p.id,'flag')} className="text-xs border px-2.5 py-1 rounded">Flag</button>
+                  <button onClick={()=>openTimeline(p.roadName)} className="text-xs border px-2.5 py-1 rounded bg-blue-50">Timeline</button>
+                  <button onClick={()=>action(p.id,'delete')} className="text-xs border px-2.5 py-1 rounded text-red-600">Delete</button>
                   <a href={`${API}${p.photoUrl}`} target="_blank" className="text-xs border px-2.5 py-1 rounded">Photo</a>
                 </div>
               </div>
