@@ -54,7 +54,7 @@ export function photoUrl(path) {
 
 export function conditionColor(c) {
   if (c === 'Not Passable') return 'bg-red-500 text-white border-red-600'
-  if (c === 'Difficult to Pass') return 'bg-amber-400 text-slate-900 border-amber-500'
+  if (c === 'Difficult to Pass') return 'bg-orange-500 text-white border-orange-600'
   if (c === 'Cleared') return 'bg-green-500 text-white border-green-600'
   return 'bg-yellow-100 text-slate-700 border-yellow-200'
 }

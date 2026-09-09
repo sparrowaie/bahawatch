@@ -6,7 +6,7 @@ import { fetchPosts } from '../lib/api.js'
 
 function colorByCondition(c) {
   if (c === 'Not Passable') return '#ef4444'
-  if (c === 'Difficult to Pass') return '#f59e0b'
+  if (c === 'Difficult to Pass') return '#f97316'
   if (c === 'Cleared') return '#22c55e'
   return '#eab308'
 }
@@ -75,7 +75,7 @@ export default function MapView() {
         <p className="text-center text-[11px] leading-tight text-slate-600">
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> Not Passable</span>
           <span className="mx-2">·</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> Difficult</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" /> Difficult</span>
           <span className="mx-2">·</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-400" /> Passable</span>
           <span className="mx-2">·</span>

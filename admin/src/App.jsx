@@ -121,7 +121,7 @@ export default function App() {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status==='Verified'?'bg-green-100 text-green-700':p.status==='AI-Flagged'?'bg-red-100 text-red-700':p.status==='AI-Verified'?'bg-blue-100 text-blue-700':'bg-slate-100'}`}>{p.status}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${p.roadCondition==='Not Passable'?'bg-red-500 text-white':p.roadCondition==='Difficult to Pass'?'bg-amber-400':p.roadCondition==='Cleared'?'bg-green-500 text-white':'bg-slate-200'}`}>{p.roadCondition}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${p.roadCondition==='Not Passable'?'bg-red-500 text-white':p.roadCondition==='Difficult to Pass'?'bg-orange-500 text-white':p.roadCondition==='Cleared'?'bg-green-500 text-white':'bg-slate-200'}`}>{p.roadCondition}</span>
                   <span className="text-xs bg-slate-100 px-2 py-0.5 rounded-full">{p.severity}</span>
                   {p.aiConfidence && <span className="text-xs border px-2 py-0.5 rounded-full">AI {Math.round(p.aiConfidence*100)}% {p.aiSeverity}</span>}
                   <span className="text-xs text-slate-400">{freshness(p.timestamp)} · {new Date(p.timestamp).toLocaleString()}</span>
