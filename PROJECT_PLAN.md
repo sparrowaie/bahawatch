@@ -1,5 +1,5 @@
 # BAHAWATCH — Optimized Project Plan
-> Community Flood & Road Condition Information App | CODELYMPICS 2026 | Stack: Flutter + Express + SQLite + React + Tailwind
+> Community Flood & Road Condition Information App | CODELYMPICS 2026 | Stack: Web (React + Tailwind mobile-first) + Express + SQLite + React Admin — Flutter paused
 
 ## Table of Contents
 1. [Summary](#1-summary) · 2. [Stack](#2-stack) · 3. [Architecture](#3-architecture) · 4. [Data Model](#4-data-model) · 5. [Roadmap](#5-roadmap) · 6. [Board](#6-board) · 7. [Validation](#7-validation) · 8. [Risks](#8-risks) · 9. [Standards](#9-standards) · 10. [Next 72h](#10-next-72-hours) · 11. [Improvements](#11-suggested-improvements)
@@ -20,26 +20,29 @@
 
 | Layer | Choice | Why (optimized) |
 |---|---|---|
-| **Mobile** | Flutter + Riverpod + `google_maps_flutter` + `camera`/`image_picker` + `geolocator` + `exif` + `dio` + `hive` | Post-type camera capture + auto geotag + offline queue |
-| **Backend** | Node + Express + `better-sqlite3` + `multer` + `jsonwebtoken` + **AI microservice** | Zero Docker, file DB; AI sidecar for image validation |
+| **Web (MVP)** | **React 19 + Vite + Tailwind 3 + React Router + Leaflet (OSM)** — mobile-first `max-w-[640px]` shell, bottom nav | **Replaces Flutter for pilot** — no APK gate, phone browser camera + `navigator.geolocation` + EXIF parse, `localStorage` queue |
+| **Mobile (paused)** | Flutter + Riverpod + `google_maps_flutter` + `camera`/`image_picker` + `geolocator` + `exif` + `dio` + `hive` | Paused — kept in `/mobile`, will resume post-validation |
+| **Backend** | Node + Express + `node:sqlite` WAL + `multer` + `jsonwebtoken` + **AI microservice** | Zero Docker, file DB; AI sidecar for image validation |
 | **AI** | **Python FastAPI + Vision** (OpenAI `gpt-4o-mini` vision *or* local `YOLOv8`/`MobileNet` flood classifier) + `sharp` | Auto-verify flood in photo, suggest severity/condition, detect fake/reused image |
 | **Admin** | React + Vite + Tailwind + `shadcn/ui` + TanStack Query | Same `/api/*`, shows AI confidence + geolocation + EXIF |
-| **Geo** | geohash(7) + bbox `BETWEEN lat/lng` + EXIF GPS + device `geolocator` | Dual source: camera EXIF + live GPS, cross-validated |
+| **Geo** | geohash(7) + bbox `BETWEEN lat/lng` + EXIF GPS + device `navigator.geolocation` | Dual source: browser EXIF + live GPS, cross-validated |
 | **Storage** | `server/uploads/` → `STORAGE_DRIVER=s3` later | MVP simple, swappable via env |
-| **Hosting** | Fly.io/Render (BE + AI) + Vercel (Admin) | Free tier + AI call < $0.01/report |
+| **Hosting** | Fly.io/Render (BE + AI) + **Vercel (Web + Admin)** — `web` + `admin` as two Vite apps | Free tier + AI call < $0.01/report |
 
 ## 3. Architecture
 
 ```
-[Flutter Post Feed] -- dio multipart --> [Express :3000/api]
-  camera + geolocator + hive       |  multer /uploads
-  post card + map pin              +--> [AI Vision Service :8000/analyze]
-                                   |      → {isFlood, severity, condition, confidence, isFake}
-                                   +--> better-sqlite3 reports.db
+[Web mobile-first :5173] -- fetch multipart --> [Express :3000/api]
+  React feed + Leaflet map          |  multer /uploads
+  capture capture=environment       +--> [AI Vision Service :8000/analyze]
+  + navigator.geolocation           |      → {isFlood, severity, condition, confidence, isFake}
+  + localStorage queue              +--> node:sqlite WAL reports.db
                                    +--> node-cron (6h → Needs Update)
                                           ^
-[React Admin] -- fetch -----------> [same Express /api/admin/*]
+[React Admin :5174] -- fetch -----> [same Express /api/admin/*]
   post moderation queue + AI badge
+
+[Flutter :mobile — paused, same contract, resumes post-pilot]
 ```
 
 - **Post-type flow:** Camera capture (mandatory image) → auto-embed `lat/lng` + `observedAt` at capture → AI analyze → POST post → feed + map pin.
@@ -85,13 +88,13 @@ W3       ████████ Timeline + deploy (APK + BE + Admin) + recruit
 W4       ████████ Rain drill + metrics + gap table + pitch deck
 ```
 
-| Week | Backend | Flutter | React Admin |
+| Week | Backend | Web (MVP, replaces Flutter) | React Admin |
 |---|---|---|---|
-| **W0 D1-2** | `server` + `ai-service` (FastAPI) init, 9 endpoints, seed 15 dummy posts, JWT | — | — |
-| **W1** | `GET bounds` + bbox + `POST posts` multipart + AI proxy `POST /ai/analyze` | Post feed (Instagram-like cards) + map pins (green/yellow/red/gray), bottom sheet, `X ago`, "No recent reports" empty | Vite+Tailwind login + posts table with AI badge |
-| **W2** | `PATCH` handlers + `photoHash` dup check + cron | **Camera capture flow** (camera → auto geolocate + EXIF → AI suggest severity/condition → user confirm + caption + safety checkbox) → `POST` 1/5min limit | Verify / Needs Update / Cleared / Delete + AI reason + EXIF vs GPS diff |
-| **W3** | Deploy + AI hosting | Timeline (by `roadName`/`geohash`) + post detail + image viewer + offline hive queue | Filters + trust score |
-| **W4** | — | Pilot on 3-5 campus roads — each post must have live camera photo | Metrics dashboard stub |
+| **W0 D1-2** | `server` + `ai-service` (FastAPI) init, 9 endpoints, seed demo posts, JWT | Scaffolding `web/` Vite+React+Tailwind+Router+Leaflet, routes `/ /map /post /posts/:id /road/:name` | — |
+| **W1** | `GET bounds` + bbox + `POST posts` multipart + AI proxy `POST /ai/analyze` | Feed cards + Leaflet pins + bottom nav + `X ago` + empty state CTA | Vite+Tailwind login + posts table with AI badge |
+| **W2** | `PATCH` handlers + `photoHash` dup check + cron | **Create flow** (`capture=environment` → `navigator.geolocation` + EXIF → AI suggest → safety checkbox) → `POST` | Verify / Needs Update / Cleared / Delete + AI reason + EXIF diff + `v`/`c` |
+| **W3** | Deploy (Fly/Render + Vercel for `web`+`admin`) | Timeline + Detail + offline `localStorage` queue (retains `timestamp`) | Filters + trust score |
+| **W4** | — | Pilot on 3-5 campus roads via phone browser — each post must have live camera photo | Metrics stub |
 
 Saved 4 weeks: parallel tracks, 4 Figma screens not 10, polling not WS, SQLite not Postgres, single campus scope.
 

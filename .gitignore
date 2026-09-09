@@ -9,6 +9,8 @@ server/uploads/*.mp4
 !server/uploads/.gitkeep
 admin/dist/
 admin/node_modules/
+web/dist/
+web/node_modules/
 ai-service/__pycache__/
 ai-service/.venv/
 *.log
@@ -22,3 +24,4 @@ server/data.db-shm
 server/data.db-wal
 package-lock.json
 admin/package-lock.json
+web/package-lock.json
