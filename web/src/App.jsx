@@ -5,6 +5,7 @@ import CreatePost from './pages/CreatePost.jsx'
 import Detail from './pages/Detail.jsx'
 import Timeline from './pages/Timeline.jsx'
 import BottomNav from './components/BottomNav.jsx'
+import AiAssist from './components/AiAssist.jsx'
 
 function Header() {
   const loc = useLocation()
@@ -44,6 +45,7 @@ export default function App() {
         </Routes>
       </main>
       <BottomNav />
+      <AiAssist />
       <div className="pointer-events-none fixed inset-x-0 bottom-[60px] flex justify-center sm:hidden">
         <span className="rounded-full border bg-white px-3 py-1 text-[11px] text-slate-500 shadow">Mobile-first · works on desktop too</span>
       </div>

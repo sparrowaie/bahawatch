@@ -81,6 +81,17 @@ async function callAI(photoUrl, lat, lng) {
   }
 }
 
+// ── opencode ai assist proxies ──
+async function proxyAI(path, body) {
+  try {
+    const r = await fetch(`${AI_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`AI ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    throw e;
+  }
+}
+
 app.post('/api/posts', upload.single('photo'), async (req, res) => {
   const { caption, lat, lng, roadName, barangay, roadCondition, severity, exifLat, exifLng, exifTimestamp, description, authorId } = req.body;
   if (!req.file) return res.status(400).json({ error: 'Photo required — camera capture mandatory' });
@@ -116,6 +127,73 @@ app.post('/api/posts/:id/ai-analyze', async (req, res) => {
   db.prepare('UPDATE posts SET aiIsFlood=?,aiSeverity=?,aiCondition=?,aiConfidence=?,aiReason=?,updatedAt=? WHERE id=?')
     .run(ai.isFlood?1:0, ai.severity, ai.condition, ai.confidence, ai.reason, new Date().toISOString(), p.id);
   res.json(ai);
+});
+
+// ── AI Assist (opencode ai) — proxied to ai-service, with fallbacks ──
+app.post('/api/ai/analyze-image', async (req, res) => {
+  try {
+    const data = await proxyAI('/analyze-image', req.body);
+    res.json(data);
+  } catch {
+    res.json({ isFlood: 1, severity: 'Moderate', condition: 'Difficult to Pass', confidence: 0.68, reason: 'AI offline — heuristic' });
+  }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  const { messages, roadName, context } = req.body || {};
+  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
+  try {
+    const data = await proxyAI('/chat', { messages, roadName, context });
+    res.json(data);
+  } catch {
+    // local heuristic fallback so UI never breaks
+    const last = messages[messages.length - 1]?.content?.toLowerCase?.() || '';
+    let reply = "I can help with road conditions around ISAT-U (La Paz). Ask: 'What's the condition of Burgos St.?' (AI offline — heuristic fallback)";
+    if (last.includes('burgos')) reply = "Recent for **Burgos St. - ISAT-U Gate**: 3 posts — Not Passable (High) → Difficult (Moderate) → **Cleared (Low)** most recent. Check Timeline for history. No report ≠ clear.";
+    else if (last.includes('jalandoni')) reply = "Recent for **Jalandoni St.**: Not Passable (High) ~1h ago. No Cleared update yet — consider alternative route.";
+    res.json({ reply, model: 'heuristic-fallback', provider: 'server-mock' });
+  }
+});
+
+app.post('/api/ai/assist', async (req, res) => {
+  const { query, roadName } = req.body || {};
+  if (!query) return res.status(400).json({ error: 'query required' });
+  // gather posts context for this road (or recent 12)
+  let posts = [];
+  try {
+    if (roadName) posts = db.prepare('SELECT roadName, roadCondition, severity, status, timestamp FROM posts WHERE roadName=? ORDER BY timestamp DESC LIMIT 12').all(roadName);
+    else posts = db.prepare('SELECT roadName, roadCondition, severity, status, timestamp FROM posts ORDER BY timestamp DESC LIMIT 12').all();
+  } catch {}
+  try {
+    const data = await proxyAI('/assist', { query, roadName, posts });
+    res.json(data);
+  } catch {
+    res.json({ reply: `No AI assist right now. Recent ${posts.length} reports for ${roadName || 'area'} — latest: ${posts[0]?.roadCondition || 'no data'}. Try again when AI service is online.`, model: 'heuristic-fallback' });
+  }
+});
+
+app.get('/api/ai/summarize', async (req, res) => {
+  const { roadName, bounds } = req.query;
+  let posts = [];
+  try {
+    if (roadName) posts = db.prepare('SELECT roadName, roadCondition, severity, status, timestamp FROM posts WHERE roadName=? ORDER BY timestamp DESC LIMIT 12').all(roadName);
+    else if (bounds) {
+      const [lat1,lng1,lat2,lng2] = bounds.split(',').map(Number);
+      const minLat = Math.min(lat1,lat2), maxLat = Math.max(lat1,lat2);
+      const minLng = Math.min(lng1,lng2), maxLng = Math.max(lng1,lng2);
+      posts = db.prepare('SELECT roadName, roadCondition, severity, status, timestamp FROM posts WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? ORDER BY timestamp DESC LIMIT 12').all(minLat,maxLat,minLng,maxLng);
+    } else posts = db.prepare('SELECT roadName, roadCondition, severity, status, timestamp FROM posts ORDER BY timestamp DESC LIMIT 12').all();
+  } catch {}
+  try {
+    const data = await proxyAI('/summarize', { roadName, posts, bounds });
+    res.json(data);
+  } catch {
+    const latest = posts[0];
+    const summary = posts.length === 0
+      ? "No recent reports for this area. No report ≠ clear — if you're safe nearby, consider capturing a photo."
+      : `${posts.length} reports${roadName?` for ${roadName}`:''}. Latest: ${latest.roadCondition} (${latest.severity}) — ${latest.status}. Check Timeline for history.`;
+    res.json({ summary, count: posts.length, model: 'heuristic-fallback' });
+  }
 });
 
 app.patch('/api/posts/:id/verify', auth, (req, res) => {

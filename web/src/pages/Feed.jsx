@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchPosts, fetchHealth } from '../lib/api.js'
 import PostCard from '../components/PostCard.jsx'
+import AiSummary from '../components/AiSummary.jsx'
 
 export default function Feed() {
   const [posts, setPosts] = useState([])
@@ -30,6 +31,9 @@ export default function Feed() {
       {health && (
         <p className="mb-2 text-[11px] text-slate-400">{health.postCount} posts · AI queue {health.aiQueue} · {health.oldestPostAge ? `oldest ${new Date(health.oldestPostAge).toLocaleDateString()}` : 'no posts yet'}</p>
       )}
+      <div className="mb-3">
+        <AiSummary />
+      </div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {['', 'Verified', 'AI-Verified', 'AI-Flagged', 'Needs Update', 'Cleared'].map(s => (
           <button key={s || 'all'} onClick={() => setFilter(s)} className={`rounded-full border px-3 py-1 text-xs ${filter === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600'}`}>{s || 'All'}</button>

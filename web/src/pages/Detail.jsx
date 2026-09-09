@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { fetchPost, freshness, photoUrl, conditionColor, statusColor } from '../lib/api.js'
+import AiAssist from '../components/AiAssist.jsx'
 
 export default function Detail() {
   const { id } = useParams()
@@ -44,6 +45,10 @@ export default function Detail() {
         <div className="rounded-xl border bg-white p-3">
           <p className="text-xs font-medium">Verification</p>
           <p className="mt-1 text-xs text-slate-600">Community report starts as <b>{post.status}</b>. Verified by admin means reviewed with photo evidence. “Needs Update” is auto-set after 6 h.</p>
+        </div>
+        <div className="pt-2">
+          <p className="mb-2 text-xs font-medium">AI Assist for this road</p>
+          <AiAssist inline roadName={post.roadName} />
         </div>
       </div>
     </div>

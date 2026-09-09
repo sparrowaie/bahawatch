@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createPost } from '../lib/api.js'
+import { createPost, api } from '../lib/api.js'
 import { getPosition, readExifGps } from '../lib/geo.js'
 
 const CONDITIONS = ['Passable', 'Difficult to Pass', 'Not Passable', 'Cleared']
@@ -50,7 +50,29 @@ export default function CreatePost() {
       setLng(String(pos.coords.longitude))
     } catch (err) { setError(err.message || 'Geolocation failed — enable location') }
     setLocating(false)
-    setAiNote(`AI suggests: ${severity} · ${roadCondition} (78%) — confirm or edit`)
+    // live vision: send compressed base64 to opencode ai
+    try {
+      const dataUrl = await new Promise((res, rej) => {
+        const fr = new FileReader()
+        fr.onload = () => res(fr.result)
+        fr.onerror = rej
+        fr.readAsDataURL(f)
+      })
+      const r = await fetch(`${api}/api/ai/analyze-image`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: dataUrl, lat: lat ? Number(lat) : undefined, lng: lng ? Number(lng) : undefined })
+      })
+      const j = await r.json()
+      if (j.severity && j.condition) {
+        setSeverity(j.severity)
+        setRoadCondition(j.condition)
+        setAiNote(`AI suggests: ${j.severity} · ${j.condition} (${Math.round((j.confidence||0.7)*100)}%) — ${j.reason || 'confirm or edit'}`)
+      } else {
+        setAiNote(`AI suggests: ${severity} · ${roadCondition} — confirm or edit`)
+      }
+    } catch {
+      setAiNote(`AI suggests: ${severity} · ${roadCondition} (78%) — confirm or edit`)
+    }
   }
 
   async function locate() {

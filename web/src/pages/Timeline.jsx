@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { fetchTimeline, freshness, conditionColor, statusColor } from '../lib/api.js'
+import AiSummary from '../components/AiSummary.jsx'
 
 export default function Timeline() {
   const { roadName } = useParams()
@@ -20,6 +21,9 @@ export default function Timeline() {
       </div>
       <div className="px-3 py-3">
         <p className="text-xs text-slate-500">Chronological condition history for this road — signature BAHAWATCH feature.</p>
+        <div className="mt-3">
+          <AiSummary roadName={name} />
+        </div>
         {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
         <ol className="relative mt-4 border-l border-slate-200">
           {posts.map((p, i) => (

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://opencode.ai/schema.json",
+  "project": {
+    "name": "bahawatch",
+    "description": "Community Flood & Road Condition reporting — CODELYMPICS 2026. AI assist powered by OpenAI vision + chat.",
+    "stack": ["React 19", "Express", "node:sqlite WAL", "Python FastAPI", "Leaflet OSM"]
+  },
+  "ai": {
+    "assist": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "visionModel": "gpt-4o-mini",
+      "chatModel": "gpt-4o-mini",
+      "baseUrl": "https://api.openai.com/v1",
+      "envKey": "OPENAI_API_KEY",
+      "fallback": "heuristic-mock",
+      "features": ["vision-analyze", "chat-assist", "road-summary", "safety-guide"]
+    },
+    "service": {
+      "url": "http://localhost:8000",
+      "health": "/health",
+      "endpoints": {
+        "analyze": "POST /analyze",
+        "analyzeImage": "POST /analyze-image",
+        "chat": "POST /chat",
+        "summarize": "POST /summarize",
+        "assist": "POST /assist"
+      }
+    },
+    "serverProxy": {
+      "base": "http://localhost:3000",
+      "endpoints": {
+        "aiChat": "POST /api/ai/chat",
+        "aiSummarize": "GET /api/ai/summarize?roadName=&bounds=",
+        "aiAssist": "POST /api/ai/assist",
+        "aiAnalyzeImage": "POST /api/ai/analyze-image"
+      }
+    }
+  },
+  "instructions": {
+    "dev": [
+      "Backend must run first: cd server && npm run dev (port 3000)",
+      "AI service optional but enables real vision: cd ai-service && uvicorn main:app --port 8000 (needs OPENAI_API_KEY)",
+      "Web: cd web && npm run dev (port 5173) — VITE_API_URL=http://localhost:3000",
+      "Seed: POST http://localhost:3000/api/seed?demo=1 and POST /api/auth/seed-admin"
+    ],
+    "aiAssistUsage": [
+      "Web floating AI button → chat: 'What's the condition of Burgos St?' → server /api/ai/chat → ai-service /chat → OpenAI or heuristic",
+      "CreatePost: selecting photo auto-calls POST /api/ai/analyze-image with base64 → vision result pre-fills severity/condition",
+      "Feed/Map: header AI summary badge calls GET /api/ai/summarize → summarizes recent posts for viewport"
+    ]
+  }
+}

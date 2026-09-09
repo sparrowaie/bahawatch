@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { fetchPosts } from '../lib/api.js'
+import AiSummary from '../components/AiSummary.jsx'
 
 function colorByCondition(c) {
   if (c === 'Not Passable') return '#dc2626'
@@ -129,6 +130,9 @@ export default function MapView() {
       </div>
 
       <div className="px-3 py-3">
+        <div className="mb-3">
+          <AiSummary bounds={bounds} />
+        </div>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">{posts.length} reports in view</h2>
           <button onClick={() => window.location.reload()} className="rounded-full border bg-white px-3 py-1 text-xs">Reload</button>
