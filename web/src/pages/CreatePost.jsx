@@ -59,6 +59,10 @@ export default function CreatePost() {
     catch (e) { setError(e.message) } finally { setLocating(false) }
   }
 
+  const hasPhoto = !!file
+  const hasGeo = lat !== '' && lng !== '' && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))
+  const canSubmit = hasPhoto && hasGeo && safety && !submitting && !locating
+
   async function submit(e) {
     e.preventDefault()
     setError('')
@@ -107,22 +111,24 @@ export default function CreatePost() {
       {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
       <form onSubmit={submit} className="mt-3 space-y-3">
-        <button type="button" onClick={() => fileRef.current?.click()} className="flex h-[220px] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed bg-slate-50">
-          {preview ? <img src={preview} alt="preview" className="h-full w-full object-cover" /> : <span className="text-center text-sm text-slate-500">📷 Tap to capture / choose flood photo<br /><span className="text-xs">(camera on mobile)</span></span>}
+        <button type="button" onClick={() => fileRef.current?.click()} className={`flex h-[220px] w-full items-center justify-center overflow-hidden rounded-2xl border-2 bg-slate-50 ${hasPhoto ? 'border-slate-200' : 'border-dashed border-red-300'}`}>
+          {preview ? <img src={preview} alt="preview" className="h-full w-full object-cover" /> : <span className="text-center text-sm text-slate-500">📷 Tap to capture / choose flood photo<br /><span className="text-xs text-red-600">* photo required</span></span>}
         </button>
+        {!hasPhoto && <p className="text-xs text-red-600">Photo required — camera capture mandatory</p>}
         <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
 
-        <div className="rounded-xl border bg-white p-3">
+        <div className={`rounded-xl border p-3 ${hasGeo ? 'bg-white border-slate-200' : 'bg-white border-red-200'}`}>
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">Location</p>
+            <p className="text-xs font-medium">Location <span className="text-red-600">* required</span></p>
             <button type="button" onClick={locate} className="rounded-full border px-3 py-1 text-xs" disabled={locating}>{locating ? 'Locating…' : 'Re-locate'}</button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <label className="text-[11px]">Lat<input value={lat} onChange={e => setLat(e.target.value)} placeholder="10.706" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" required /></label>
-            <label className="text-[11px]">Lng<input value={lng} onChange={e => setLng(e.target.value)} placeholder="122.554" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" required /></label>
+            <label className="text-[11px]">Lat *<input value={lat} onChange={e => setLat(e.target.value)} placeholder="10.706" className={`mt-1 w-full rounded-lg border px-2 py-1.5 text-sm ${lat && !Number.isNaN(Number(lat)) ? 'border-slate-200' : 'border-red-300'}`} required /></label>
+            <label className="text-[11px]">Lng *<input value={lng} onChange={e => setLng(e.target.value)} placeholder="122.554" className={`mt-1 w-full rounded-lg border px-2 py-1.5 text-sm ${lng && !Number.isNaN(Number(lng)) ? 'border-slate-200' : 'border-red-300'}`} required /></label>
           </div>
+          {!hasGeo && <p className="mt-1 text-xs text-red-600">Geolocation required — tap Re-locate and allow location</p>}
           <p className="mt-1 text-[11px] text-slate-400">EXIF GPS {exifLat ? `${Number(exifLat).toFixed(5)}, ${Number(exifLng).toFixed(5)}` : '— not in image'} · device GPS above · mismatch &gt;100 m → flagged</p>
-          {lat && lng && <p className="mt-1 text-[11px] text-slate-500">📍 {Number(lat).toFixed(5)}, {Number(lng).toFixed(5)} · captured {new Date().toLocaleTimeString()}</p>}
+          {hasGeo && <p className="mt-1 text-[11px] text-green-600">✓ {Number(lat).toFixed(5)}, {Number(lng).toFixed(5)} · captured {new Date().toLocaleTimeString()}</p>}
         </div>
 
         <div className="grid gap-3 rounded-xl border bg-white p-3">
@@ -143,14 +149,22 @@ export default function CreatePost() {
           </label>
         </div>
 
-        <label className="flex gap-2 rounded-xl border bg-amber-50 p-3 text-xs leading-tight">
-          <input type="checkbox" checked={safety} onChange={e => setSafety(e.target.checked)} className="mt-0.5" />
-          <span>I am in a safe location. I did NOT enter floodwater, am NOT driving, and this photo was taken safely.</span>
+        <label className={`flex gap-2 rounded-xl border p-3 text-xs leading-tight ${safety ? 'bg-white border-slate-200' : 'bg-amber-50 border-amber-200'}`}>
+          <input type="checkbox" checked={safety} onChange={e => setSafety(e.target.checked)} className="mt-0.5" required />
+          <span>I am in a safe location. I did NOT enter floodwater, am NOT driving, and this photo was taken safely. <span className="text-red-600">* required</span></span>
         </label>
 
-        <button type="submit" disabled={submitting} className="w-full rounded-full bg-blue-600 py-3 text-sm font-semibold text-white shadow disabled:opacity-50">
+        <button type="submit" disabled={!canSubmit} className="w-full rounded-full bg-blue-600 py-3 text-sm font-semibold text-white shadow disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
           {submitting ? 'Posting…' : 'Post Report'}
         </button>
+        {!canSubmit && (
+          <p className="text-center text-xs text-slate-500">
+            {!hasPhoto && 'Add photo · '}
+            {!hasGeo && 'Add geolocation · '}
+            {!safety && 'Confirm safety · '}
+            then Post activates
+          </p>
+        )}
         <p className="text-center text-[11px] text-slate-400">Queued if offline — retains original <code>timestamp</code></p>
       </form>
     </div>
