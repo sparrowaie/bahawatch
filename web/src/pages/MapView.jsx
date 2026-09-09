@@ -5,7 +5,7 @@ import L from 'leaflet'
 import { fetchPosts } from '../lib/api.js'
 
 function colorByCondition(c) {
-  if (c === 'Not Passable') return '#ef4444'
+  if (c === 'Not Passable') return '#dc2626'
   if (c === 'Difficult to Pass') return '#f97316'
   if (c === 'Cleared') return '#22c55e'
   return '#eab308'
@@ -73,7 +73,7 @@ export default function MapView() {
     <div className="mx-auto max-w-[1024px] pb-24">
       <div className="sticky top-[49px] z-10 border-y bg-white px-3 py-2">
         <p className="text-center text-[11px] leading-tight text-slate-600">
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> Not Passable</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-600" /> Not Passable</span>
           <span className="mx-2">·</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" /> Difficult</span>
           <span className="mx-2">·</span>
