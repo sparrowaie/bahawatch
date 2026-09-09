@@ -1,197 +1,164 @@
-# BAHAWATCH — Project Plan
+# BAHAWATCH — Optimized Project Plan
+> Community Flood & Road Condition Information App | CODELYMPICS 2026 | Stack: Flutter + Express + SQLite + React + Tailwind
 
-> Community Flood & Road Condition Information App | CODELYMPICS 2026 Student Innovators Edition
+## Table of Contents
+1. [Summary](#1-summary) · 2. [Stack](#2-stack) · 3. [Architecture](#3-architecture) · 4. [Data Model](#4-data-model) · 5. [Roadmap](#5-roadmap) · 6. [Board](#6-board) · 7. [Validation](#7-validation) · 8. [Risks](#8-risks) · 9. [Standards](#9-standards) · 10. [Next 72h](#10-next-72-hours) · 11. [Improvements](#11-suggested-improvements)
 
-## 1. Overview
+## 1. Summary
 
-**Problem:** Gap between general weather information and recent, road-specific ground reports (passable / difficult / not passable / cleared).
-
-**Solution:** Community-powered map where users submit location + road condition + severity + timestamp + optional media from a safe location; viewers see freshness, verification status, and condition timeline per road.
-
-**Core Principle:** Do not predict floods, do not replace official warnings, do not recommend routes. Show recent, timestamped, structured reports so users judge evidence themselves.
-
-## 2. Objectives & Success Criteria
-
-| Objective | Success Metric |
+| Item | Decision |
 |---|---|
-| Collect recent reports | >50 valid reports during pilot, <60 min avg freshness |
-| Verify usability | >80% of test users find road-specific condition without help |
-| Trust | >70% rate information useful/trustworthy (when freshness+verification shown) |
-| Coverage | 10+ distinct roads/areas with usable reports |
-| Verification | >40% reports reviewed/verified via admin |
-| Retention | >30% return usage during 2nd rain event |
+| **Problem** | Gap between weather forecast and recent, road-specific passability |
+| **MVP** | **Post-type feed + map** · camera capture with auto-geolocation + AI validation + freshness/verification + timeline + admin verify |
+| **Non-goals** | Prediction, PAGASA live, push alerts, heatmaps — Phase 2 |
+| **Timeline** | **4 weeks demoable** (was 8) — 3 parallel tracks |
+| **Pilot** | 3-5 roads around ISAT-U, 20-30 users |
 
-## 3. Scope
+**Principle:** Backend first → unblocks Flutter & React; one SQLite DB, one REST contract; never claim "real-time" — show "Reported X ago".
 
-### MVP (Must-Have) — Validate Value
-1. Interactive Community Map (pins clustered by road condition color)
-2. Location-specific Report View (severity, condition, time, photo, status)
-3. Safe Report Submission (map pin + auto-location + condition + severity + optional photo/video + safety reminder)
-4. Freshness Indicator (`8m ago`, `45m ago`, `Needs Update`)
-5. Report Status workflow: `Submitted` → `Under Review` → `Verified` / `Needs Update` / `Cleared`
-6. Road Condition Timeline (chronological history per road)
-7. Basic Admin Dashboard (review, verify, clear, delete, flag)
+## 2. Stack
 
-### Explicitly Out of MVP
-Predictive flood modeling, live PAGASA broadcast integration, push alerts, analytics, LGU/DRRM full monitoring, offline-first (only designed, not built).
+| Layer | Choice | Why (optimized) |
+|---|---|---|
+| **Mobile** | Flutter + Riverpod + `google_maps_flutter` + `camera`/`image_picker` + `geolocator` + `exif` + `dio` + `hive` | Post-type camera capture + auto geotag + offline queue |
+| **Backend** | Node + Express + `better-sqlite3` + `multer` + `jsonwebtoken` + **AI microservice** | Zero Docker, file DB; AI sidecar for image validation |
+| **AI** | **Python FastAPI + Vision** (OpenAI `gpt-4o-mini` vision *or* local `YOLOv8`/`MobileNet` flood classifier) + `sharp` | Auto-verify flood in photo, suggest severity/condition, detect fake/reused image |
+| **Admin** | React + Vite + Tailwind + `shadcn/ui` + TanStack Query | Same `/api/*`, shows AI confidence + geolocation + EXIF |
+| **Geo** | geohash(7) + bbox `BETWEEN lat/lng` + EXIF GPS + device `geolocator` | Dual source: camera EXIF + live GPS, cross-validated |
+| **Storage** | `server/uploads/` → `STORAGE_DRIVER=s3` later | MVP simple, swappable via env |
+| **Hosting** | Fly.io/Render (BE + AI) + Vercel (Admin) | Free tier + AI call < $0.01/report |
 
-### Phase 2 (Post-Validation)
-Flood history heatmap, multiple-report grouping, community confirm, LGU dashboard, area alerts, analytics, offline cache + queued submit.
+## 3. Architecture
 
-## 4. Tech Stack (Per Requirements)
-
-**Mobile App:** Flutter (Dart) — Material 3, `google_maps_flutter` + `geolocator` + `image_picker`, `dio`/`http` for API, `sqflite`/`hive` for local offline queue cache
-**Backend:** Node.js + Express.js + SQLite (`better-sqlite3`) + `multer` for media uploads, `jsonwebtoken` + `bcrypt` for auth, `cors` + `helmet`
-**Design System:** Tailwind CSS (admin dashboard) + Material 3 tokens mirrored in Flutter theme for visual consistency
-**Admin Dashboard:** React (Vite) + TypeScript + Tailwind CSS + React Router + TanStack Query, consuming same Express REST API
-**Map & Geo:** Google Maps Platform (Flutter) ; Geocoding via Google Places / Nominatim fallback ; geohash + bounding-box queries in SQLite
-**Storage:** Local filesystem `uploads/` (MVP) → migratable to S3/R2 later (5MB photo, 15s video limit)
-
-## 5. Data Model
-
-```ts
-Report {
-  id: uuid
-  location: { lat, lng, roadName?, barangay?, landmark?, geohash }
-  roadCondition: 'Passable' | 'Difficult to Pass' | 'Not Passable' | 'Cleared'
-  severity: 'Low' | 'Moderate' | 'High'
-  timestamp: ISO8601 // creation time, not upload time
-  freshness: derived
-  status: 'Submitted' | 'Under Review' | 'Verified' | 'Needs Update' | 'Cleared'
-  media: { photoUrl?, videoUrl?, hasMedia: boolean }
-  description?: string
-  authorId?: string // anonymous allowed in MVP
-  verification: { verifiedBy?, verifiedAt?, notes? }
-  flags: number
-  createdAt, updatedAt
-}
+```
+[Flutter Post Feed] -- dio multipart --> [Express :3000/api]
+  camera + geolocator + hive       |  multer /uploads
+  post card + map pin              +--> [AI Vision Service :8000/analyze]
+                                   |      → {isFlood, severity, condition, confidence, isFake}
+                                   +--> better-sqlite3 reports.db
+                                   +--> node-cron (6h → Needs Update)
+                                          ^
+[React Admin] -- fetch -----------> [same Express /api/admin/*]
+  post moderation queue + AI badge
 ```
 
-Indexes: `geohash`, `roadName`, `timestamp desc`, `status`.
+- **Post-type flow:** Camera capture (mandatory image) → auto-embed `lat/lng` + `observedAt` at capture → AI analyze → POST post → feed + map pin.
+- **Sync:** Poll 30s + pull-to-refresh (add SSE Phase 2)
+- **Cron:** `0 * * * *` marks stale `Needs Update` per geohash
+- **Auth:** JWT, public `GET`, auth `POST/PATCH`; anonymous submit allowed
 
-SQLite Schema (Express):
+Endpoints (9 total): `GET /api/posts?bounds=&feed=` · `GET /posts/:id` · `GET /posts/road/:name/timeline` · `POST /posts` (multipart: image + lat/lng/EXIF + fields) · `POST /posts/:id/ai-analyze` · `PATCH /posts/:id/{verify,clear,flag}` · `POST /auth/login` · `GET /health` · `POST /ai/analyze` (internal)
+
+## 4. Data Model
+
 ```sql
-CREATE TABLE reports (
-  id TEXT PRIMARY KEY,
+-- Post-type report = post with image + geolocation + AI
+CREATE TABLE posts (
+  id TEXT PRIMARY KEY, 
+  caption TEXT, -- post body
   lat REAL NOT NULL, lng REAL NOT NULL, geohash TEXT,
-  roadName TEXT, barangay TEXT, landmark TEXT,
+  roadName TEXT, barangay TEXT,
   roadCondition TEXT CHECK(roadCondition IN ('Passable','Difficult to Pass','Not Passable','Cleared')),
   severity TEXT CHECK(severity IN ('Low','Moderate','High')),
-  timestamp TEXT NOT NULL, -- observedAt ISO8601
-  status TEXT DEFAULT 'Submitted',
-  photoUrl TEXT, videoUrl TEXT,
-  description TEXT, authorId TEXT,
-  verifiedBy TEXT, verifiedAt TEXT,
-  flags INTEGER DEFAULT 0,
+  timestamp TEXT NOT NULL, -- observedAt = camera capture time
+  status TEXT DEFAULT 'Submitted', -- + AI-assisted: 'AI-Verified' / 'AI-Flagged'
+  photoUrl TEXT NOT NULL, photoHash TEXT, -- image mandatory, hash for duplicate/fake detection
+  exifLat REAL, exifLng REAL, exifTimestamp TEXT, -- from image EXIF vs device GPS cross-check
+  aiIsFlood INT, aiSeverity TEXT, aiCondition TEXT, aiConfidence REAL, aiReason TEXT,
+  description TEXT, authorId TEXT, verifiedBy TEXT, verifiedAt TEXT, flags INT DEFAULT 0,
   createdAt TEXT, updatedAt TEXT
 );
-CREATE INDEX idx_reports_geohash ON reports(geohash);
-CREATE INDEX idx_reports_timestamp ON reports(timestamp DESC);
+CREATE INDEX idx_geo_time ON posts(geohash, timestamp DESC);
+CREATE INDEX idx_status ON posts(status);
+CREATE INDEX idx_photoHash ON posts(photoHash);
 ```
 
-## 6. Architecture
+**Post-type:** image **required** (camera capture only, no gallery in MVP to ensure fresh geotagged photo), geolocation **dual**: `geolocator` live + EXIF GPS, mismatch >100m → `AI-Flagged`. AI fields auto-filled on upload, editable by user before submit, reviewable in React admin with confidence badge.
+
+## 5. Roadmap — 4 Weeks
 
 ```
-[Flutter App] --REST JSON--> [Express.js API (:3000/api)]
-      |                              |
-      +-> sqflite (offline queue)    +-> SQLite (reports.db + better-sqlite3)
-      +-> google_maps_flutter        +-> /uploads (multer) static serve
-                                     +-> JWT auth middleware
-                                     
-[React + Tailwind Admin] --REST JSON--> [same Express API + /api/admin/*]
+W0 D1-2  ███ Setup (BE + Figma + 10 interviews) parallel
+W1       ████████ Core: GET bounds + map pins + detail + admin table
+W2       ████████ Submit + safety modal + hive stub + admin verify
+W3       ████████ Timeline + deploy (APK + BE + Admin) + recruit 20-30 users
+W4       ████████ Rain drill + metrics + gap table + pitch deck
 ```
 
-- Polling (30s) or manual pull-to-refresh for new reports in visible bounds (no realtime in MVP — add WebSocket/SSE in Phase 2).
-- Cron (node-cron) job: auto-set `Needs Update` after 6h without new report per geohash.
-- Image moderation via admin review (MVP).
+| Week | Backend | Flutter | React Admin |
+|---|---|---|---|
+| **W0 D1-2** | `server` + `ai-service` (FastAPI) init, 9 endpoints, seed 15 dummy posts, JWT | — | — |
+| **W1** | `GET bounds` + bbox + `POST posts` multipart + AI proxy `POST /ai/analyze` | Post feed (Instagram-like cards) + map pins (green/yellow/red/gray), bottom sheet, `X ago`, "No recent reports" empty | Vite+Tailwind login + posts table with AI badge |
+| **W2** | `PATCH` handlers + `photoHash` dup check + cron | **Camera capture flow** (camera → auto geolocate + EXIF → AI suggest severity/condition → user confirm + caption + safety checkbox) → `POST` 1/5min limit | Verify / Needs Update / Cleared / Delete + AI reason + EXIF vs GPS diff |
+| **W3** | Deploy + AI hosting | Timeline (by `roadName`/`geohash`) + post detail + image viewer + offline hive queue | Filters + trust score |
+| **W4** | — | Pilot on 3-5 campus roads — each post must have live camera photo | Metrics dashboard stub |
 
-**API Endpoints (Express):**
-`GET /api/reports?bounds=lat1,lng1,lat2,lng2&status=&roadCondition=`
-`GET /api/reports/:id` `GET /api/reports/road/:roadName/timeline`
-`POST /api/reports` (multipart: fields + photo/video) `PATCH /api/reports/:id/verify|clear|flag`
-`POST /api/auth/login` `GET /api/admin/reports` (React Tailwind dashboard)
+Saved 4 weeks: parallel tracks, 4 Figma screens not 10, polling not WS, SQLite not Postgres, single campus scope.
 
-## 7. Phased Roadmap (8 Weeks Pilot)
+## 6. Board (MoSCoW) — Post-type + AI
 
-### Phase 0 — Preparation (Week 1)
-- [ ] Finalize PRD from concept paper, define condition definitions with photos
-- [ ] Figma wireframes: Map, Report Card, Submit Form (with safety modal), Timeline, React Tailwind Admin
-- [ ] Setup repo: `mobile_flutter/`, `server_express_sqlite/`, `admin_react_tailwind/`, CI, lint
-- [ ] Setup Express + SQLite backend, DB schema, `uploads/` + JWT auth, seed script
-- [ ] Conduct 10-15 validation interviews (use Validation Questions in concept doc)
+- **MUST W1-2:** post feed + map bounds query, camera capture with geolocation, `POST posts` multipart, AI `isFlood` + `severity` suggest, detail, verify
+- **SHOULD W3:** timeline, EXIF vs GPS mismatch flag, photoHash duplicate detection
+- **COULD Phase2:** offline auto-sync with queued `observedAt`, clustering, AI fake/reused image detection (pHash), trust score
+- **WON'T:** heatmap, alerts, analytics, gallery upload (camera-only in MVP)
 
-### Phase 1 — Core MVP Build (Weeks 2-4)
-**Sprint 1 (W2): Map + Data**
-- Map with pins, color by condition (green/yellow/red/gray), detail bottom sheet
-- Fetch reports by bounds, freshness label, no-report empty state
+Owners: `BE:1`, `Flutter:1-2`, `Admin/Design:1` · Daily PR review.
 
-**Sprint 2 (W3): Reporting**
-- Submit form: map pin / use current location, roadCondition, severity, photo picker, safety checkbox
-- Timestamp handling, offline-prepare stub (save locally, show "will upload when online" — no auto-sync yet)
-- Validation, rate limit (1 report / 5 min / device)
+## 7. Validation (Lean)
 
-**Sprint 3 (W4): Verification + Timeline**
-- Status badges, admin auth + dashboard table
-- Verify / Needs Update / Clear actions
-- Road timeline component (vertical chronological list per geohash/roadName)
+Same 9 questions pre/post, cohorts A=15 commuters, B=5 riders+2 LGU. Pass = answers "last report for Road X, when, verified?" in <30s. No % until data collected.
 
-### Phase 2 — Pilot & Refinement (Weeks 5-6)
-- [ ] Deploy Flutter APK/TestFlight + hosted Express + React Admin (e.g., Render/Fly.io)
-- [ ] Recruit 20-30 pilot users from ISAT-U (students, faculty, staff)
-- [ ] Simulated + real rain event reporting drill
-- [ ] Collect metrics: time-to-find road, trust rating, willingness to report
-- [ ] Bugfix: duplicate reports grouping, freshness thresholds tuning
+## 8. Risks
 
-### Phase 3 — Validation & Pitch (Weeks 7-8)
-- [ ] Compare vs alternatives (FB groups, chats, Waze) — gap analysis table
-- [ ] Measured results → update pitch deck (prove the 5 hypotheses)
-- [ ] Define Phase 2 offline design (cached reads + queued writes with original timestamp)
-- [ ] Handover docs + mentoring plan for ISATech/KWADRA TBI
-
-## 8. Validation Plan
-
-Run same 9 interview questions pre- and post-MVP with 2 cohorts:
-
-- **Cohort A (Primary):** 15 residents/commuters flood-prone routes
-- **Cohort B (Secondary):** 5 riders/drivers + 3 businesses + 2 LGU/DRRM contacts (for future need)
-
-Record raw responses, no fake percentages. Test: can user answer "What was last reported for Road X, when, and is it verified?" in <30s.
-
-## 9. Roles (5-person team)
-
-- **Lead Dev / Backend** — Express + SQLite schema, REST APIs, auth, uploads
-- **Mobile Dev** — Flutter map + reporting + offline queue (sqflite)
-- **Admin Dev** — React + Tailwind dashboard (verification workflow)
-- **UI/UX** — Figma, Tailwind tokens → Flutter ThemeData mapping, safety UX
-- **Research / Data** — Interviews, metrics, analytics + Comms/Biz pitch
-
-## 10. Risks & Mitigations
-
-| Risk | Mitigation |
+| Risk | Mitigation in plan |
 |---|---|
-| No reports / sparse coverage | Start narrow: 3-5 roads around campus, recruit class as seed contributors |
-| Outdated reports | Prominent `Reported X min ago`, auto `Needs Update` after 3-6h, `Cleared` button |
-| False reports | Require photo optional but prioritized, admin verify, flag button, duplicate corroboration |
-| Safety encouragement | Safety modal + checkbox mandatory before submit, no "go check" CTA |
-| No internet during typhoon | Show cached reports with `May be outdated` banner + design offline-queue for Phase 2 |
+| Sparse reports | 3-road focus + 15 seeded posts + class reporters |
+| Stale data | `X min ago` prominent + cron Needs Update + Cleared |
+| False reports | **Camera-only + AI `isFlood` check + photoHash dup** + admin verify + flag |
+| AI error | Show `AI 78% · Suggested: High — user can override`, admin sees AI reason |
+| Geolocation spoof | **Cross-check EXIF GPS vs device GPS (>100m = flagged)** + map pin drag requires re-AI |
+| Offline | Hive queue keeps image + `observedAt` + GPS, uploads on reconnect |
+| Safety | Modal blocks submit until checkbox + "Do not enter floodwater to take photo" |
 
-## 11. Development Standards
+## 9. Standards (Post + AI)
 
-- Conventional Commits, PR reviews
-- Offline timestamp rule: always store `observedAt` at creation, `uploadedAt` at sync — display `observedAt`
-- No claim of "real-time" in UI copy — use "Recent reports"
-- Privacy: blur faces/plates option, no exact home address required
+- One `.env` (`API_BASE_URL`, `MAPS_KEY`, `JWT_SECRET`, `OPENAI_API_KEY` or `AI_SERVICE_URL`)
+- `observedAt` = camera shutter time (EXIF) vs `uploadedAt` — display `observedAt` ("Captured 8m ago")
+- Camera-only in MVP (`camera` plugin, no gallery) ensures fresh geotagged image
+- AI prompt (vision): "Is this a flooded road? Return JSON {isFlood:bool, severity:Low|Moderate|High, condition:Passable|Difficult|Not Passable, confidence:0-1, reason:string}"
+- Copy: "Recent reports" not "real-time" · Blur faces/plates option · GPS required before AI call
 
-## 12. Immediate Next Actions (This Week)
+## 10. Next 72 Hours
 
-1. Create GitHub repo + init `server_express_sqlite` (Express + better-sqlite3 + uploads) + `mobile_flutter` + `admin_react_tailwind` (Vite + Tailwind)
-2. Approve Figma flow (Map → Detail → Submit with safety reminder)
-3. Run 10 validation interviews around campus
-4. Build SQLite schema + Express seed route + 15 dummy reports for demo video
+- [ ] Monorepo `server/` `ai-service/` `mobile/` `admin/` skeleton + CI
+- [ ] BE `POST /posts` (multipart + geolocation) + AI `POST /ai/analyze` working + seed posts with photos
+- [ ] Figma: post card + map + camera + AI suggest UI approved
+- [ ] 10 interviews scheduled + test AI on 20 sample flood/non-flood images
 
-## 13. References
+## 11. Suggested Improvements
 
-Links as in concept paper: HazardHunterPH, HANDA, PAGASA Flood Maps, See (2019) citizen science review.
+### A. Product (High Impact, Low Cost) — Post-type + AI
+1. **Post feed + map toggle:** Instagram-like feed (newest post first) plus map view — same `posts` data, two presentations for judges.
+2. **AI trust score:** `photoHash unique? + EXIF↔GPS match? + recency<30m? + AI confidence? + duplicates?` → badge "High/Med/Low · AI 85% High" (computed BE, shown in Flutter + Admin).
+3. **Duplicate/Reused image check:** `pHash` on upload — if `photoHash` exists within 7 days → auto-flag "Possible reused photo — needs review".
+4. **Camera guide overlay:** in-camera 4 reference thumbnails (ankle/knee/waist) + level horizon guide — cuts mislabels + improves AI accuracy.
+5. **Cleared as first-class post:** green post card "Cleared 5m ago" with before/after photo overrides old red pin.
+6. **Empty-state education:** "No post ≠ clear. Capture a photo if you're safe nearby" + camera CTA — addresses "What if nobody reports?"
+
+### B. Technical (Polish) — AI & Geo
+6. **SQLite WAL mode + `PRAGMA journal_mode=WAL`** — doubles write throughput for concurrent post uploads.
+7. **Image compress in Flutter before AI + upload** (`flutter_image_compress` to 1024px, <600KB) — faster AI call + saves bandwidth.
+8. **AI cost cap:** cache `photoHash → AI result` in SQLite, reuse if same image re-uploaded; fallback to heuristic if `OPENAI_API_KEY` missing (demo mode: mock AI 70% conf).
+9. **Rate limit by deviceId hash** — prevents spam while allowing anonymous posts.
+10. **Admin AI queue:** filter `AI-Flagged` / `EXIF mismatch` / `low confidence <0.6` — bulk verify with `v`/`c` shortcuts.
+11. **E2E seed:** `POST /api/seed?demo=1` generates 3 roads × 5 post timeline (with sample flood photos + AI fields) — reproducible demo without rain.
+12. **Health returns `oldestPostAge` + `postCount` + `aiQueue`** — admin freshness at glance.
+
+### C. Process / Pitch
+12. **Cut Figma to 1 day** using Tailwind UI + Material 3 template — don't design from scratch.
+13. **Deploy Day 3** (not Week 3) — even empty BE on Fly.io catches CORS/env issues early.
+14. **Pre-record 60s demo** with seeded timeline (High → Moderate → Cleared) — judges see signature feature without waiting for rain.
+15. **Metrics sheet ready Week 1** (Google Sheet with 5 success metrics) — log during pilot, not after.
 
 ---
-*Stack lock: Flutter (mobile) + Express + SQLite (backend) + React + Tailwind (admin). Keep MVP online-first; offline queue (sqflite → POST on reconnect with original observedAt) lands in Phase 2.*
+*Polished: 8→4 weeks, parallelized, scope-cut to campus, added trust/duplicate/empty-state improvements for higher validation score.*
